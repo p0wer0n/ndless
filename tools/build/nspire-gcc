@@ -22,6 +22,10 @@ fi
 
 GCC=`(which arm-elf-gcc arm-none-eabi-gcc arm-linux-gnueabi-gcc | head -1) 2>/dev/null`
 home="${USERPROFILE:-$HOME}"
+NO_NSPIRE_LUA_FLAG_CHECK=`echo "$@" | grep [-]D_DISABLE_SYSTEM_LUA`
+if [ "$NO_NSPIRE_LUA_FLAG_CHECK" = "" ];then
+	EXTRAFLAGS='-I '"$DIRNAME/../include/lua"
+fi
 mkdir -p "$home/.ndless/include"
 # -fno-builtin: We prefer to use syscalls. And GCC's builtins expansion (http://www.ciselant.de/projects/gcc_printf/gcc_printf.html)
 # is incompatible with the inline definition of most syscalls.

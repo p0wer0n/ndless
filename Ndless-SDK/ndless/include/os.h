@@ -434,6 +434,7 @@ _SYSCALL4(uint32_t, inflateInit2_, z_streamp /* strm */, uint32_t /* windowBits 
 _SYSCALL2(uint32_t, inflate, z_streamp /* strm */, uint32_t /* flush */)
 _SYSCALL1(uint32_t, inflateEnd, z_streamp /* strm */)
 
+#ifndef _DISABLE_SYSTEM_LUA
 #include <lauxlib.h>
 _SYSCALL3(void, luaL_register, lua_State *, const char *, const luaL_Reg *)
 _SYSCALL3(const char *, luaL_checklstring, lua_State *, int, size_t *)
@@ -553,6 +554,7 @@ _SYSCALL2(int, lua_next, lua_State *, int)
 _SYSCALL2(void, lua_concat, lua_State *, int)
 _SYSCALL3(int, lua_getstack, lua_State *, int, lua_Debug *)
 _SYSCALL3(int, lua_getinfo, lua_State *, const char *, lua_Debug *)
+#endif
 
 /* Ndless extensions. Not available in thumb state. */
 // Given a list of OS-specific value and its size, returns the value for the current OS.
@@ -566,7 +568,9 @@ _SYSCALL3(void, nl_relocdatab, unsigned * /* dataptr */, unsigned /* size */, vo
 // 0 on non-CX, 1 on CX
 _SYSCALL0(unsigned, nl_hwtype)
 _SYSCALL0(BOOL, nl_isstartup)
+#ifndef _DISABLE_SYSTEM_LUA
 _SYSCALL0(lua_State *, nl_lua_getstate)
+#endif
 _SYSCALL0(void, nl_set_resident)
 _SYSCALL0(unsigned, nl_ndless_rev)
 
