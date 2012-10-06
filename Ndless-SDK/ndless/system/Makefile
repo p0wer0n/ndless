@@ -4,7 +4,7 @@ AS = nspire-as
 GCC = nspire-gcc
 GCCFLAGS = -Os
 
-all: crt0.o crt0light.o crt0lightnoheader.o crt0sym.o osstub.o
+all: crt0.o crt0light.o crt0lightnoheader.o crt0sym.o osstub.o crt0_bflt.o
 
 %.o: %.c
 	$(GCC) $(GCCFLAGS) -c $<
@@ -17,6 +17,9 @@ crt0light.o: crt0.S
 
 crt0lightnoheader.o: crt0.S
 	$(AS) $(GCCFLAGS) -D _NDLS_LIGHT -D NO_PRGM_HEADER -c $< -o $@
+
+crt0_bflt.o: crt0_bflt.S
+	$(GCC) -fpic -Wall -W -mcpu=arm926ej-s -c $<
 
 clean:
 	rm -rf *.o
