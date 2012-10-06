@@ -24,6 +24,7 @@
 
 #include <os.h>
 #include "ndless.h"
+#include "bflt.h"
 
 
 struct assoc_file_recur_cb_ctx {
@@ -54,15 +55,46 @@ void ld_set_resident(void) {
 	is_current_prgm_resident = TRUE;
 }
 
+static int ndless_load(char *docpath, void **base, size_t *size, int (**entry_address_ptr)(int,char*[])) {
+	int ret;
+	FILE* docfile = fopen(docpath, "rb");
+	struct stat docstat;
+	if (!docfile || (ret = stat(docpath, &docstat))) {
+		puts("ld_exec: can't open doc");
+		return 1;
+	}
+
+	void *docptr = emu_debug_alloc_ptr ? emu_debug_alloc_ptr : malloc(docstat.st_size);
+	if (!docptr) {
+		puts("ld_exec: can't malloc");
+		return 1;
+	}
+	if (!fread(docptr, docstat.st_size, 1, docfile)) {
+		puts("ld_exec: can't read doc");
+		if (!emu_debug_alloc_ptr)
+			free(docptr);
+		return 1;
+	}
+	fclose(docfile);
+	if (strcmp(PRGMSIG, docptr)) { /* not a program */
+		if (!emu_debug_alloc_ptr)
+			free(docptr);
+		return 1;
+	}
+
+	*base = docptr;
+	*size = docstat.st_size;
+	*entry_address_ptr = (int (*)(int argc, char *argv[]))(docptr + sizeof(PRGMSIG));
+	return 0;
+}
+
 // Try to run a document. Returns non zero if can't run it.
 // If resident_ptr isn't NULL, the program's memory block isn't freed and is stored in resident_ptr. It may be freed later with ld_free().
 int ld_exec(const char *path, void **resident_ptr) {
 	char docpath[FILENAME_MAX];
-	int ret;
 	unsigned i;
 	char arg1[FILENAME_MAX];
 	int argc = 1;
-	FILE *docfile = NULL;
 	strcpy(docpath, path);
 
 	// File association
@@ -91,31 +123,29 @@ int ld_exec(const char *path, void **resident_ptr) {
 		cfg_close();
 	}
 
-	docfile = fopen(docpath, "rb");
-	struct stat docstat;
-	if (!docfile || (ret = stat(docpath, &docstat))) {
-cantopen:
-		puts("ld_exec: can't open doc");
-		return 1;
+	enum {
+		ERROR_BIN,
+		NDLESS_BIN,
+		BFLT_BIN
+	};
+	int loaded = ERROR_BIN;
+	void *base;
+	size_t size;
+	int (*entry)(int argc, char *argv[]);
+
+	// try load as ndless binary first
+	if (ndless_load(docpath, &base, &size, &entry) != 0) {
+		// if failed, try loading as bflt binary
+		if (bflt_load(docpath, &base, &size, &entry) != 0) {
+			//error loading binary
+			return 1;
+		}else{
+			loaded = BFLT_BIN;
+		}
+	}else{
+		loaded = NDLESS_BIN;
 	}
 
-	void *docptr = emu_debug_alloc_ptr ? emu_debug_alloc_ptr : malloc(docstat.st_size);
-	if (!docptr) {
-		puts("ld_exec: can't malloc");
-		return 1;
-	}
-	if (!fread(docptr, docstat.st_size, 1, docfile)) {
-		puts("ld_exec: can't read doc");
-		if (!emu_debug_alloc_ptr)
-			free(docptr);
-		return 1;
-	}
-	fclose(docfile);
-	if (strcmp(PRGMSIG, docptr)) { /* not a program */
-		if (!emu_debug_alloc_ptr)
-			free(docptr);
-		return 1;
-	}
 	int intmask = TCT_Local_Control_Interrupts(-1); /* TODO workaround: disable the interrupts to avoid the clock on the screen */
 	wait_no_key_pressed(); // let the user release the Enter key, to avoid being read by the program
 	void *savedscr = malloc(SCREEN_BYTES_SIZE);
@@ -128,7 +158,7 @@ cantopen:
 	}
 	is_current_prgm_resident = FALSE;
 	clear_cache();
-	((void (*)(int argc, char *argv[]))(docptr + sizeof(PRGMSIG)))(argc, argc == 1 ? ((char*[]){docpath, NULL}) : ((char*[]){docpath, arg1, NULL})); /* run the program */
+	entry(argc, argc == 1 ? ((char*[]){docpath, NULL}) : ((char*[]){docpath, arg1, NULL})); /* run the program */
 	if (has_colors) {
 		lcd_incolor(); // in case not restored by the program
 	}
@@ -137,14 +167,18 @@ cantopen:
 	wait_no_key_pressed(); // let the user release the key used to exit the program, to avoid being read by the OS
 	TCT_Local_Control_Interrupts(intmask);
 	if (resident_ptr) {
-		*resident_ptr = docptr;
+		*resident_ptr = base;
 		return 0;
 	}
 	if (is_current_prgm_resident) // required by the program itself
 		return 0;
-	if (!emu_debug_alloc_ptr)
-		free(docptr);
+	if (!emu_debug_alloc_ptr) {
+		if (loaded == NDLESS_BIN) free(base);
+		if (loaded == BFLT_BIN) bflt_free(base);
+	}
 	return 0;
+cantopen:
+	return 1;
 }
 
 // To free the program's memory block when run with ld_exec(non null resident_ptr)
